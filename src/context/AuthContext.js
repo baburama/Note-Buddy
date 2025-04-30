@@ -4,7 +4,7 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 export const AuthContext = createContext(null);
 
 // Base URL for API - can be changed for different environments
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = 'https://note-buddy-backend.onrender.com';
 
 export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);

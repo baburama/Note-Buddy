@@ -28,7 +28,7 @@ function App() {
   const { username, logout, authFetch } = useAuth();
 
   // Base URL for API endpoints
-  const baseUrl = 'http://localhost:5000';
+  const baseUrl = 'https://note-buddy-backend.onrender.com';
 
   // Fetch user notes on component mount and when username or refreshTrigger changes
   useEffect(() => {

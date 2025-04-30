@@ -16,7 +16,7 @@ const RecordingDialog = ({
   open,
   onClose,
   openNotesDialog,
-  baseUrl = 'http://localhost:5000',
+  baseUrl = 'https://note-buddy-backend.onrender.com',
   onNoteAdded = () => {},
 }) => {
   const [noteTitle, setNoteTitle] = useState('');
