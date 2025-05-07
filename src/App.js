@@ -30,6 +30,23 @@ function App() {
   // Base URL for API endpoints
   const baseUrl = 'https://note-buddy-backend.onrender.com';
 
+  //call /health on setup
+  useEffect(() => {
+    const wakeUpServer = async () => {
+      try {
+        console.log('Pinging backend to wake it up...');
+        const response = await fetch('https://note-buddy-backend.onrender.com/health');
+        if (response.ok) {
+          console.log('Backend is awake and responded');
+        }
+      } catch (error) {
+        console.log('Error waking up server:', error);
+      }
+    };
+
+    wakeUpServer();
+  }, []);
+
   // Fetch user notes on component mount and when username or refreshTrigger changes
   useEffect(() => {
     fetchUserNotes();
