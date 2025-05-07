@@ -1,30 +1,30 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-// Create context
-export const AuthContext = createContext(null);
+// Create the context
+const AuthContext = createContext(null);
 
-// Base URL for API - can be changed for different environments
-const API_BASE_URL = 'https://note-buddy-backend.onrender.com';
-
+// Define the provider component
 export const AuthProvider = ({ children }) => {
+  const [username, setUsername] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [username, setUsername] = useState('');
-  const [credentials, setCredentials] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
 
-  // Check if user is already logged in
+  // Update this to the Render backend URL
+  const API_BASE_URL = 'https://note-buddy-backend.onrender.com';
+
+  // Check if the user is already logged in (on component mount)
   useEffect(() => {
     const storedUsername = localStorage.getItem('username');
-    const storedCredentials = localStorage.getItem('credentials');
+    const storedPassword = localStorage.getItem('password'); // This is for development only
     
-    if (storedUsername && storedCredentials) {
+    if (storedUsername && storedPassword) {
       setUsername(storedUsername);
-      setCredentials(storedCredentials);
       setIsAuthenticated(true);
     }
     
-    setLoading(false);
+    setIsLoading(false);
   }, []);
 
   // Login function
@@ -41,26 +41,26 @@ export const AuthProvider = ({ children }) => {
       const data = await response.json();
       
       if (response.ok) {
-        // Store credentials for Basic Auth
-        const credentials = `Basic ${username}:${password}`;
+        // Store credentials in localStorage
         localStorage.setItem('username', username);
-        localStorage.setItem('credentials', credentials);
+        localStorage.setItem('password', password); // This is for development only
         
+        // Update state
         setUsername(username);
-        setCredentials(credentials);
         setIsAuthenticated(true);
-        setError('');
-        return true;
+        
+        // Redirect to home page
+        navigate('/');
+        return { success: true };
       } else {
-        setError(data.error || 'Login failed');
-        return false;
+        return { success: false, error: data.error || 'Login failed' };
       }
-    } catch (err) {
-      setError('Network error. Please try again.');
-      return false;
+    } catch (error) {
+      console.error('Login error:', error);
+      return { success: false, error: 'Login failed. Please try again.' };
     }
   };
-  
+
   // Register function
   const register = async (username, password) => {
     try {
@@ -75,59 +75,78 @@ export const AuthProvider = ({ children }) => {
       const data = await response.json();
       
       if (response.ok) {
-        setError('');
-        return true;
+        return { success: true };
       } else {
-        setError(data.error || 'Registration failed');
-        return false;
+        return { success: false, error: data.error || 'Registration failed' };
       }
-    } catch (err) {
-      setError('Network error. Please try again.');
-      return false;
+    } catch (error) {
+      console.error('Registration error:', error);
+      return { success: false, error: 'Registration failed. Please try again.' };
     }
   };
-  
+
   // Logout function
   const logout = () => {
+    // Clear localStorage
     localStorage.removeItem('username');
-    localStorage.removeItem('credentials');
-    setUsername('');
-    setCredentials('');
+    localStorage.removeItem('password');
+    
+    // Update state
+    setUsername(null);
     setIsAuthenticated(false);
+    
+    // Redirect to login page
+    navigate('/login');
   };
 
-  // Custom fetch with authentication headers
+  // Authenticated fetch function (adds the authorization header)
   const authFetch = async (url, options = {}) => {
-    if (!credentials) {
+    const storedUsername = localStorage.getItem('username');
+    const storedPassword = localStorage.getItem('password');
+    
+    if (!storedUsername || !storedPassword) {
       throw new Error('Not authenticated');
     }
     
-    const headers = {
-      ...options.headers,
-      'Authorization': credentials,
+    // Create Basic Auth header
+    const authHeader = `Basic ${storedUsername}:${storedPassword}`;
+    
+    // Add headers to the options
+    const authOptions = {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': authHeader,
+      },
     };
     
-    return fetch(`${API_BASE_URL}${url}`, {
-      ...options,
-      headers,
-    });
+    // Make the request to the full URL (with API base)
+    return fetch(`${API_BASE_URL}${url}`, authOptions);
+  };
+
+  // Provide the context values
+  const contextValue = {
+    username,
+    isAuthenticated,
+    isLoading,
+    login,
+    register,
+    logout,
+    authFetch,
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      isAuthenticated, 
-      username, 
-      loading,
-      login, 
-      register, 
-      logout, 
-      error,
-      authFetch
-    }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-// Custom hook for using auth context
-export const useAuth = () => useContext(AuthContext);
+// Custom hook for using the auth context
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
