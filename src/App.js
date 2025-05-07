@@ -12,6 +12,8 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { useAuth } from './context/AuthContext';
+import Alert from '@mui/material/Alert';
+import CircularProgress from '@mui/material/CircularProgress';
 
 function App() {
   const [isYoutubeDialogOpen, setIsYoutubeDialogOpen] = useState(false);
@@ -25,14 +27,22 @@ function App() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Get authentication context
-  const { username, logout, authFetch } = useAuth();
+  const { username, logout, authFetch, backendStatus, checkBackendHealth } = useAuth();
 
   // Base URL for API endpoints
   const baseUrl = 'https://note-buddy-backend.onrender.com';
 
+  // Check backend health on initial load
+  useEffect(() => {
+    // Initial health check when app loads
+    checkBackendHealth();
+  }, [checkBackendHealth]);
+
   // Fetch user notes on component mount and when username or refreshTrigger changes
   useEffect(() => {
-    fetchUserNotes();
+    if (username) {
+      fetchUserNotes();
+    }
   }, [username, refreshTrigger]);
 
   // Function to fetch user notes from the backend
@@ -124,18 +134,6 @@ function App() {
     setIsNotesDialogOpen(true);
   };
 
-  // For testing: open the NotesDialog directly.
-  const handleOpenNotesDialog = () => {
-    openNotesDialog("My Custom Note", `# My Custom Note
-
-This is a custom note with **Markdown** support.
-- Bullet point one.
-- Bullet point two.
-
-### Conclusion
-Markdown formatting is fully supported.`);
-  };
-
   // When a note card from the list is clicked.
   const handleNoteCardClick = (title, content) => {
     openNotesDialog(title, content);
@@ -148,10 +146,9 @@ Markdown formatting is fully supported.`);
     triggerRefresh();
   };
 
-  // Callback for when a new note is added
-  const handleNoteAdded = () => {
-    console.log("Note added, triggering refresh");
-    triggerRefresh(); // Refresh the notes list
+  // Trigger backend refresh
+  const handleRefreshBackend = () => {
+    checkBackendHealth();
   };
 
   return (
@@ -213,6 +210,35 @@ Markdown formatting is fully supported.`);
         </div>
       </header>
 
+      {/* Backend Status Alert */}
+      {backendStatus === 'starting' && (
+        <Alert 
+          severity="info" 
+          sx={{ 
+            margin: '10px auto', 
+            maxWidth: '90%',
+            display: 'flex',
+            alignItems: 'center'
+          }}
+          action={
+            <Button 
+              color="inherit" 
+              size="small" 
+              onClick={handleRefreshBackend}
+            >
+              Refresh
+            </Button>
+          }
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <CircularProgress size={20} color="info" />
+            <span>
+              The server is starting up. This may take up to 30 seconds.
+            </span>
+          </div>
+        </Alert>
+      )}
+
       {/* Action Section */}
       <section className="action-section">
         <div className="action-buttons-container">
@@ -264,7 +290,7 @@ Markdown formatting is fully supported.`);
          openNotesDialog={openNotesDialog}
          baseUrl={baseUrl}
          username={username}
-         onNoteAdded={handleNoteAdded}
+         onNoteAdded={triggerRefresh}
       />
 
       {/* Recording Dialog */}
@@ -274,7 +300,7 @@ Markdown formatting is fully supported.`);
          openNotesDialog={openNotesDialog}
          baseUrl={baseUrl}
          username={username}
-         onNoteAdded={handleNoteAdded}
+         onNoteAdded={triggerRefresh}
       />
 
       {/* Notes Dialog */}
