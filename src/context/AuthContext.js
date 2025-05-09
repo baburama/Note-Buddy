@@ -219,7 +219,7 @@ export const AuthProvider = ({ children }) => {
     
     // Check backend health first if not ready
     if (backendStatus !== 'ready') {
-      await waitForBackend(1); // Just one quick retry
+      await waitForBackend(2); // Just one quick retry
     }
     
     const headers = {
