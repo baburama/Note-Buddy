@@ -31,6 +31,7 @@ const RecordingDialog = ({
   const [stage, setStage] = useState('recording'); // recording, review, summary
   const [transcriptionStatus, setTranscriptionStatus] = useState(''); // Status message during transcription
   const [transcriptionId, setTranscriptionId] = useState(''); // To track the AssemblyAI job
+  const [retryCount, setRetryCount] = useState(0);
   const mediaRecorderRef = useRef(null);
   const timerRef = useRef(null);
   const pollIntervalRef = useRef(null);
@@ -130,8 +131,10 @@ const RecordingDialog = ({
     }
   };
 
-  // Process recording to get transcript
-  const processRecording = async () => {
+  // Process recording to get transcript with retry logic
+  const processRecording = async (attemptCount = 0) => {
+    const MAX_RETRIES = 2; // Maximum number of retries (3 total attempts)
+    
     if (!audioBlob) {
       setError('No recording available to process');
       return;
@@ -146,7 +149,10 @@ const RecordingDialog = ({
     
     setLoading(true);
     setError('');
-    setTranscriptionStatus('Uploading audio...');
+    setRetryCount(attemptCount);
+    
+    const attemptLabel = attemptCount > 0 ? ` (Attempt ${attemptCount + 1}/${MAX_RETRIES + 1})` : '';
+    setTranscriptionStatus(`Uploading audio...${attemptLabel}`);
     
     try {
       // Create a FormData object to send the audio file
@@ -166,7 +172,7 @@ const RecordingDialog = ({
       
       const { transcription_id } = await uploadResponse.json();
       setTranscriptionId(transcription_id);
-      setTranscriptionStatus('Transcription started...');
+      setTranscriptionStatus(`Transcription started...${attemptLabel}`);
       
       // Step 2: Poll for transcription completion
       pollIntervalRef.current = setInterval(async () => {
@@ -191,14 +197,27 @@ const RecordingDialog = ({
             clearInterval(pollIntervalRef.current);
             throw new Error(statusData.error || 'Transcription failed');
           } else if (statusData.status === 'processing') {
-            setTranscriptionStatus('Processing audio...');
+            setTranscriptionStatus(`Processing audio...${attemptLabel}`);
           } else if (statusData.status === 'queued') {
-            setTranscriptionStatus('Waiting in queue...');
+            setTranscriptionStatus(`Waiting in queue...${attemptLabel}`);
           }
         } catch (pollError) {
           clearInterval(pollIntervalRef.current);
           setLoading(false);
-          setError(`Transcription error: ${pollError.message}`);
+          
+          // Handle error with retry logic
+          if (attemptCount < MAX_RETRIES) {
+            console.log(`Transcription poll error. Retrying (${attemptCount + 1}/${MAX_RETRIES})`, pollError);
+            setError(`Error checking transcription status. Retrying...`);
+            
+            // Wait a moment before retrying
+            setTimeout(() => {
+              // Try processRecording again with incremented attempt count
+              processRecording(attemptCount + 1);
+            }, 2000);
+          } else {
+            setError(`Transcription error after multiple attempts: ${pollError.message}`);
+          }
         }
       }, 3000); // Check every 3 seconds
       
@@ -208,20 +227,57 @@ const RecordingDialog = ({
           clearInterval(pollIntervalRef.current);
           if (loading) {
             setLoading(false);
-            setError('Transcription is taking longer than expected. Please try again or check status later.');
+            
+            // Handle timeout with retry logic
+            if (attemptCount < MAX_RETRIES) {
+              console.log(`Transcription timeout. Retrying (${attemptCount + 1}/${MAX_RETRIES})`);
+              setError('Transcription is taking too long. Retrying...');
+              
+              // Wait a moment before retrying
+              setTimeout(() => {
+                // Try processRecording again with incremented attempt count
+                processRecording(attemptCount + 1);
+              }, 2000);
+            } else {
+              setError('Transcription failed after multiple attempts. Please try again later.');
+            }
           }
         }
       }, 120000); // 2 minutes timeout
       
     } catch (err) {
-      console.error('Error processing recording:', err);
+      console.error(`Error processing recording (Attempt ${attemptCount + 1}/${MAX_RETRIES + 1}):`, err);
+      clearInterval(pollIntervalRef.current);
       setLoading(false);
-      setError(`Failed to process recording: ${err.message}`);
+      
+      // Check if this is a retriable error (timeout, auth error, etc.)
+      const isRetriableError = 
+        err.message.includes('timed out') || 
+        err.message.includes('401') || 
+        err.message.includes('403') ||
+        err.message.includes('Authentication error') ||
+        err.message.includes('failed');
+      
+      // Retry logic
+      if (isRetriableError && attemptCount < MAX_RETRIES) {
+        setError(`Processing failed. Retrying (${attemptCount + 1}/${MAX_RETRIES})...`);
+        
+        // Wait a moment before retrying
+        setTimeout(() => {
+          // Try processRecording again with incremented attempt count
+          processRecording(attemptCount + 1);
+        }, 2000);
+      } else {
+        // Out of retries or non-retriable error
+        setError(`Failed to process recording: ${err.message}`);
+      }
     }
   };
 
-  // Save note to database
-  const saveNote = async () => {
+  // Save note to database with retry logic
+  const saveNote = async (attemptCount = 0) => {
+    const MAX_RETRIES = 2; // Maximum number of retries (3 total attempts)
+    
     if (!transcript) {
       setError('No transcript available to save');
       return;
@@ -234,6 +290,7 @@ const RecordingDialog = ({
     
     setLoading(true);
     setError('');
+    setRetryCount(attemptCount);
     
     try {
       // Process the transcript to generate formatted notes
@@ -283,9 +340,30 @@ const RecordingDialog = ({
       handleClose();
       
     } catch (err) {
-      console.error('Error saving note:', err);
+      console.error(`Error saving note (Attempt ${attemptCount + 1}/${MAX_RETRIES + 1}):`, err);
       setLoading(false);
-      setError(`Failed to save note: ${err.message}`);
+      
+      // Check if this is a retriable error (timeout, auth error, etc.)
+      const isRetriableError = 
+        err.message.includes('timed out') || 
+        err.message.includes('401') || 
+        err.message.includes('403') ||
+        err.message.includes('Authentication error') ||
+        err.message.includes('failed');
+      
+      // Retry logic
+      if (isRetriableError && attemptCount < MAX_RETRIES) {
+        setError(`Saving failed. Retrying (${attemptCount + 1}/${MAX_RETRIES})...`);
+        
+        // Wait a moment before retrying
+        setTimeout(() => {
+          // Try saveNote again with incremented attempt count
+          saveNote(attemptCount + 1);
+        }, 2000);
+      } else {
+        // Out of retries or non-retriable error
+        setError(`Failed to save note: ${err.message}`);
+      }
     }
   };
 
@@ -303,6 +381,7 @@ const RecordingDialog = ({
     setStage('recording');
     setTranscriptionStatus('');
     setTranscriptionId('');
+    setRetryCount(0);
     
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -491,7 +570,7 @@ const RecordingDialog = ({
                 
                 <Button
                   variant="contained"
-                  onClick={processRecording}
+                  onClick={() => processRecording(0)}
                   disabled={loading}
                   startIcon={loading ? <CircularProgress size={20} /> : <Save />}
                   sx={{
@@ -506,7 +585,7 @@ const RecordingDialog = ({
                     },
                   }}
                 >
-                  {loading ? 'Processing...' : 'Process Recording'}
+                  {loading ? `Processing${retryCount > 0 ? ` (Attempt ${retryCount + 1}/3)` : ''}...` : 'Process Recording'}
                 </Button>
               </Box>
               
@@ -590,7 +669,7 @@ const RecordingDialog = ({
         
         {stage === 'summary' && (
           <Button
-            onClick={saveNote}
+            onClick={() => saveNote(0)}
             disabled={loading || !transcript}
             variant="contained"
             startIcon={loading ? <CircularProgress size={16} /> : <Save />}
@@ -606,7 +685,7 @@ const RecordingDialog = ({
               },
             }}
           >
-            {loading ? 'Saving...' : 'Save Note'}
+            {loading ? `Saving${retryCount > 0 ? ` (Attempt ${retryCount + 1}/3)` : ''}...` : 'Save Note'}
           </Button>
         )}
       </DialogActions>
