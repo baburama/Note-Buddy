@@ -8,7 +8,7 @@ import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
-import { Mic, MicOff, StopCircle, Save, Delete } from 'lucide-react';
+import { Mic, StopCircle, Save, Delete } from 'lucide-react';
 import MicSvg from '../assets/mic-sound-record-voice-svgrepo-com.svg';
 import { useAuth } from '../context/AuthContext';
 
@@ -31,6 +31,7 @@ const RecordingDialog = ({
   const [stage, setStage] = useState('recording'); // recording, review, summary
   const [transcriptionStatus, setTranscriptionStatus] = useState(''); // Status message during transcription
   const [transcriptionId, setTranscriptionId] = useState(''); // To track the AssemblyAI job
+  const [retryAttempt, setRetryAttempt] = useState(0); // Track retry attempts
   const mediaRecorderRef = useRef(null);
   const timerRef = useRef(null);
   const pollIntervalRef = useRef(null);
@@ -130,8 +131,13 @@ const RecordingDialog = ({
     }
   };
 
-  // Process recording to get transcript
+  // Process recording to get transcript with retry logic
   const processRecording = async () => {
+    // Reset retry count on fresh attempts
+    if (retryAttempt === 0) {
+      setRetryAttempt(1);
+    }
+    
     if (!audioBlob) {
       setError('No recording available to process');
       return;
@@ -146,77 +152,112 @@ const RecordingDialog = ({
     
     setLoading(true);
     setError('');
-    setTranscriptionStatus('Uploading audio...');
+    setTranscriptionStatus(retryAttempt > 1 ? 
+      `Uploading audio... (Attempt ${retryAttempt}/3)` : 
+      'Uploading audio...');
     
     try {
       // Create a FormData object to send the audio file
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.webm');
       
-      // Step 1: Upload audio to AssemblyAI through your backend
-      const uploadResponse = await authFetch('/upload-audio', {
-        method: 'POST',
-        body: formData,
-      });
+      // Step 1: Upload audio to AssemblyAI through your backend with timeout handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
       
-      if (!uploadResponse.ok) {
-        const errorData = await uploadResponse.json().catch(() => ({}));
-        throw new Error(errorData.error || `Upload failed: ${uploadResponse.status}`);
+      try {
+        const uploadResponse = await authFetch('/upload-audio', {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!uploadResponse.ok) {
+          const errorData = await uploadResponse.json().catch(() => ({}));
+          throw new Error(errorData.error || `Upload failed: ${uploadResponse.status}`);
+        }
+        
+        const { transcription_id } = await uploadResponse.json();
+        setTranscriptionId(transcription_id);
+        setTranscriptionStatus('Transcription started...');
+        
+        // Step 2: Poll for transcription completion
+        pollIntervalRef.current = setInterval(async () => {
+          try {
+            const statusResponse = await authFetch(`/check-transcription/${transcription_id}`);
+            
+            if (!statusResponse.ok) {
+              clearInterval(pollIntervalRef.current);
+              const errorData = await statusResponse.json().catch(() => ({}));
+              throw new Error(errorData.error || `Status check failed: ${statusResponse.status}`);
+            }
+            
+            const statusData = await statusResponse.json();
+            
+            if (statusData.status === 'completed') {
+              clearInterval(pollIntervalRef.current);
+              setTranscript(statusData.transcript);
+              setLoading(false);
+              setTranscriptionStatus('');
+              setStage('summary');
+              setRetryAttempt(0); // Reset retry count on success
+            } else if (statusData.status === 'error') {
+              clearInterval(pollIntervalRef.current);
+              throw new Error(statusData.error || 'Transcription failed');
+            } else if (statusData.status === 'processing') {
+              setTranscriptionStatus('Processing audio...');
+            } else if (statusData.status === 'queued') {
+              setTranscriptionStatus('Waiting in queue...');
+            }
+          } catch (pollError) {
+            clearInterval(pollIntervalRef.current);
+            throw pollError; // Pass error to main catch block
+          }
+        }, 3000); // Check every 3 seconds
+        
+        // Add timeout after 2 minutes to prevent endless polling
+        setTimeout(() => {
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            if (loading) {
+              setLoading(false);
+              throw new Error('Transcription is taking longer than expected.');
+            }
+          }
+        }, 120000); // 2 minutes timeout
+        
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        throw fetchError; // Pass to outer catch block
       }
-      
-      const { transcription_id } = await uploadResponse.json();
-      setTranscriptionId(transcription_id);
-      setTranscriptionStatus('Transcription started...');
-      
-      // Step 2: Poll for transcription completion
-      pollIntervalRef.current = setInterval(async () => {
-        try {
-          const statusResponse = await authFetch(`/check-transcription/${transcription_id}`);
-          
-          if (!statusResponse.ok) {
-            clearInterval(pollIntervalRef.current);
-            const errorData = await statusResponse.json().catch(() => ({}));
-            throw new Error(errorData.error || `Status check failed: ${statusResponse.status}`);
-          }
-          
-          const statusData = await statusResponse.json();
-          
-          if (statusData.status === 'completed') {
-            clearInterval(pollIntervalRef.current);
-            setTranscript(statusData.transcript);
-            setLoading(false);
-            setTranscriptionStatus('');
-            setStage('summary');
-          } else if (statusData.status === 'error') {
-            clearInterval(pollIntervalRef.current);
-            throw new Error(statusData.error || 'Transcription failed');
-          } else if (statusData.status === 'processing') {
-            setTranscriptionStatus('Processing audio...');
-          } else if (statusData.status === 'queued') {
-            setTranscriptionStatus('Waiting in queue...');
-          }
-        } catch (pollError) {
-          clearInterval(pollIntervalRef.current);
-          setLoading(false);
-          setError(`Transcription error: ${pollError.message}`);
-        }
-      }, 3000); // Check every 3 seconds
-      
-      // Add timeout after 2 minutes to prevent endless polling
-      setTimeout(() => {
-        if (pollIntervalRef.current) {
-          clearInterval(pollIntervalRef.current);
-          if (loading) {
-            setLoading(false);
-            setError('Transcription is taking longer than expected. Please try again or check status later.');
-          }
-        }
-      }, 120000); // 2 minutes timeout
       
     } catch (err) {
       console.error('Error processing recording:', err);
+      clearInterval(pollIntervalRef.current);
       setLoading(false);
-      setError(`Failed to process recording: ${err.message}`);
+      
+      const isTimeout = err.name === 'AbortError';
+      const errorMsg = isTimeout ? 
+        'Request timed out. Server might be busy.' : 
+        `Failed to process recording: ${err.message}`;
+      
+      // Check if we should retry
+      if (retryAttempt < 3) {
+        const nextAttempt = retryAttempt + 1;
+        setError(`${errorMsg} Retrying... (${nextAttempt}/3)`);
+        setRetryAttempt(nextAttempt);
+        
+        // Wait 2 seconds before retrying
+        setTimeout(() => {
+          processRecording();
+        }, 2000);
+      } else {
+        // Max retries reached
+        setError(`${errorMsg} Maximum retry attempts reached.`);
+        setRetryAttempt(0); // Reset for next manual attempt
+      }
     }
   };
 
@@ -303,6 +344,7 @@ const RecordingDialog = ({
     setStage('recording');
     setTranscriptionStatus('');
     setTranscriptionId('');
+    setRetryAttempt(0);
     
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -331,6 +373,12 @@ const RecordingDialog = ({
     onClose();
   };
 
+  // Manual retry button handler
+  const handleManualRetry = () => {
+    setRetryAttempt(1); // Start fresh retry cycle
+    processRecording();
+  };
+
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ borderBottom: '1px solid #e0e0e0' }}>
@@ -354,9 +402,23 @@ const RecordingDialog = ({
 
       <DialogContent>
         {error && (
-          <Typography color="error" sx={{ my: 1, fontFamily: 'Rubik, sans-serif' }}>
-            {error}
-          </Typography>
+          <Box sx={{ my: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography color="error" sx={{ fontFamily: 'Rubik, sans-serif', flex: 1 }}>
+              {error}
+            </Typography>
+            
+            {error.includes('Maximum retry attempts reached') && (
+              <Button 
+                onClick={handleManualRetry} 
+                variant="outlined"
+                color="primary"
+                size="small"
+                sx={{ ml: 2, fontFamily: 'Rubik, sans-serif', textTransform: 'none' }}
+              >
+                Try Again
+              </Button>
+            )}
+          </Box>
         )}
 
         {stage === 'recording' && (
@@ -506,7 +568,7 @@ const RecordingDialog = ({
                     },
                   }}
                 >
-                  {loading ? 'Processing...' : 'Process Recording'}
+                  {loading ? (retryAttempt > 1 ? `Processing (Attempt ${retryAttempt}/3)...` : 'Processing...') : 'Process Recording'}
                 </Button>
               </Box>
               
