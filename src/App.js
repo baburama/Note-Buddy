@@ -3,10 +3,13 @@ import './App.css';
 import NotesIcon from './assets/notes-notebook-svgrepo-com.svg';
 import YoutubeSvg from './assets/youtube-color-svgrepo-com.svg';
 import MicSvg from './assets/mic-sound-record-voice-svgrepo-com.svg';
+// You'll need to add a PDF icon - you can use Material-UI's PictureAsPdfIcon or add your own SVG
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import CardAction from './components/CardAction';
 import YoutubeDialog from './components/YoutubeDialog';
 import NotesDialog from './components/NotesDialog';
 import RecordingDialog from './components/RecordingDialog';
+import PdfDialog from './components/PdfDialog'; // New import
 import Button from '@mui/material/Button';
 import LogoutIcon from '@mui/icons-material/Logout';
 import Tooltip from '@mui/material/Tooltip';
@@ -17,6 +20,7 @@ function App() {
   const [isYoutubeDialogOpen, setIsYoutubeDialogOpen] = useState(false);
   const [isNotesDialogOpen, setIsNotesDialogOpen] = useState(false);
   const [isRecordingDialogOpen, setIsRecordingDialogOpen] = useState(false);
+  const [isPdfDialogOpen, setIsPdfDialogOpen] = useState(false); // New state
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
   const [notesList, setNotesList] = useState([]);
@@ -117,6 +121,11 @@ function App() {
     setIsYoutubeDialogOpen(true);
   };
 
+  // New handler for PDF upload
+  const handlePdfUploadClick = () => {
+    setIsPdfDialogOpen(true);
+  };
+
   const handleCloseYoutubeDialog = () => {
     setIsYoutubeDialogOpen(false);
     // Refresh notes when dialog is closed
@@ -125,6 +134,13 @@ function App() {
 
   const handleCloseRecordingDialog = () => {
     setIsRecordingDialogOpen(false);
+    // Refresh notes when dialog is closed
+    triggerRefresh();
+  };
+
+  // New handler for PDF dialog close
+  const handleClosePdfDialog = () => {
+    setIsPdfDialogOpen(false);
     // Refresh notes when dialog is closed
     triggerRefresh();
   };
@@ -230,7 +246,7 @@ Markdown formatting is fully supported.`);
         </div>
       </header>
 
-      {/* Action Section */}
+      {/* Action Section - Updated with PDF option */}
       <section className="action-section">
         <div className="action-buttons-container">
           <CardAction 
@@ -244,6 +260,13 @@ Markdown formatting is fully supported.`);
             onClick={handleYoutubeVideoClick} 
             subtext="Paste Youtube link" 
             image={YoutubeSvg} 
+          />
+          <CardAction 
+            title="Upload PDF" 
+            onClick={handlePdfUploadClick} 
+            subtext="Upload & analyze document" 
+            icon={PictureAsPdfIcon} // Using Material-UI icon instead of image
+            iconColor="#d32f2f" // PDF red color
           />
         </div>
       </section>
@@ -288,6 +311,16 @@ Markdown formatting is fully supported.`);
       <RecordingDialog 
          open={isRecordingDialogOpen} 
          onClose={handleCloseRecordingDialog} 
+         openNotesDialog={openNotesDialog}
+         baseUrl={baseUrl}
+         username={username}
+         onNoteAdded={handleNoteAdded}
+      />
+
+      {/* PDF Dialog - New addition */}
+      <PdfDialog 
+         open={isPdfDialogOpen} 
+         onClose={handleClosePdfDialog} 
          openNotesDialog={openNotesDialog}
          baseUrl={baseUrl}
          username={username}
