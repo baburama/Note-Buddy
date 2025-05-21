@@ -1,5 +1,4 @@
 import React from 'react';
-import './CardAction.css'; // Assuming you have styles here
 import DeleteIcon from '@mui/icons-material/Delete';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
