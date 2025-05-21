@@ -12,9 +12,11 @@ const CardAction = ({
   title, 
   subtext = "", 
   image = "", 
+  icon: IconComponent, // NEW: Material-UI icon component
+  iconColor, // NEW: Icon color
   onClick, 
   notesCard = false,
-  onDelete = null // Add onDelete prop, null by default
+  onDelete = null
 }) => {
   // For notes cards, we want them to fill the container width.
   const cardStyles = notesCard
@@ -67,7 +69,8 @@ const CardAction = ({
               flexDirection: 'row',
             }}
           >
-            {image && (
+            {/* UPDATED: Support both image and Material-UI icon */}
+            {image ? (
               <Box
                 component="img"
                 src={image}
@@ -78,7 +81,17 @@ const CardAction = ({
                   mr: 2,
                 }}
               />
-            )}
+            ) : IconComponent ? (
+              <IconComponent 
+                sx={{ 
+                  width: 40, 
+                  height: 40, 
+                  mr: 2,
+                  color: iconColor || '#fff',
+                }} 
+              />
+            ) : null}
+            
             <Box
               sx={{
                 display: 'flex',
