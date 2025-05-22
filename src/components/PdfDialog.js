@@ -76,13 +76,11 @@ const PdfDialog = ({
       const formData = new FormData();
       formData.append('pdf', selectedFile);
 
-      // Upload PDF and get summary
-      const uploadResponse = await fetch(`${baseUrl}/upload-pdf`, {
+      // Use authFetch for PDF upload
+      const uploadResponse = await authFetch('/upload-pdf', {
         method: 'POST',
-        headers: {
-          'Authorization': `Basic ${localStorage.getItem('username')}:${localStorage.getItem('password')}` // Use your auth method
-        },
         body: formData,
+        // Don't set Content-Type header - let browser set it for FormData with boundary
       });
       
       if (!uploadResponse.ok) {
