@@ -2,6 +2,8 @@
 
 NoteBuddy is an AI-powered notes application designed to help students and professionals learn more efficiently.  
 It automatically summarizes **YouTube videos, PDFs, and voice recordings**, turning long content into concise, study-ready notes.
+Link:
+https://www.notebuddy.me/
 
 ---
 
