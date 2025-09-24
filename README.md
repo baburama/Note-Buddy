@@ -23,6 +23,4 @@ https://www.notebuddy.me/
 - **Authentication**: JWT  
 - **AI**: Natural Language Processing (summarization models)  
 
----
 
-## 📂 Project Structure
